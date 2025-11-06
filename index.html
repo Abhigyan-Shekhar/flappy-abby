@@ -42,7 +42,6 @@
         overflow: hidden;
     }
     
-    /* Screen Management */
     .screen {
         display: none;
         flex-direction: column;
@@ -72,7 +71,6 @@
         display: flex;
     }
     
-    /* Game Container */
     #game-container {
         display: none;
         position: relative;
@@ -93,10 +91,8 @@
         box-shadow: var(--shadow-medium);
         touch-action: none;
         cursor: pointer;
-        /* Fixed size - no CSS scaling */
     }
     
-    /* Score Display */
     #score-display {
         position: absolute;
         top: 30px;
@@ -110,7 +106,6 @@
         z-index: 10;
     }
     
-    /* Typography */
     h1 {
         font-size: 3rem;
         margin: 0 0 15px 0;
@@ -134,7 +129,6 @@
         font-size: 1.1rem;
     }
     
-    /* Form Elements */
     input {
         font-size: 1.2rem;
         padding: 15px 20px;
@@ -157,7 +151,6 @@
         border-color: var(--danger-color);
     }
     
-    /* Buttons */
     button {
         font-size: 1.2rem;
         padding: 15px 40px;
@@ -214,7 +207,6 @@
         outline-offset: 2px;
     }
     
-    /* Leaderboard */
     #leaderboard-display {
         width: 100%;
         margin-top: 30px;
@@ -265,7 +257,6 @@
     #leaderboard-list li.rank-2 { background: linear-gradient(135deg, #c0c0c0 0%, #e8e8e8 100%); }
     #leaderboard-list li.rank-3 { background: linear-gradient(135deg, #cd7f32 0%, #e8a76f 100%); }
     
-    /* Status Messages */
     .loading {
         color: #666;
         font-style: italic;
@@ -290,7 +281,6 @@
         margin: 12px 0;
     }
     
-    /* Instructions */
     .instructions {
         margin: 20px 0;
         padding: 20px;
@@ -310,7 +300,6 @@
         font-size: 0.95em;
     }
     
-    /* High Score Badge */
     .high-score-badge {
         display: inline-block;
         background: var(--success-color);
@@ -327,7 +316,6 @@
         50% { transform: scale(1.05); }
     }
     
-    /* Loading Spinner */
     .spinner {
         border: 4px solid #f3f3f3;
         border-top: 4px solid var(--primary-color);
@@ -343,7 +331,16 @@
         100% { transform: rotate(360deg); }
     }
     
-    /* Responsive Design */
+    .verified-badge {
+        display: inline-block;
+        background: var(--success-color);
+        color: white;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        margin-left: 8px;
+    }
+    
     @media (max-width: 768px) {
         body {
             padding: 10px;
@@ -391,7 +388,6 @@
         }
     }
     
-    /* Accessibility */
     .sr-only {
         position: absolute;
         width: 1px;
@@ -404,7 +400,6 @@
         border-width: 0;
     }
     
-    /* Scrollbar Styling */
     #leaderboard-list::-webkit-scrollbar {
         width: 10px;
     }
@@ -425,7 +420,6 @@
 </style>
 </head>
 <body>
-    <!-- Start Screen -->
     <div id="start-screen" class="screen active">
         <h1>🐦 Flappy Abby</h1>
         <p>Enter your name to start playing:</p>
@@ -450,13 +444,11 @@
         <div id="high-score-display"></div>
     </div>
     
-    <!-- Game Container -->
     <div id="game-container">
         <div id="score-display" aria-live="polite" aria-atomic="true">0</div>
         <canvas id="game-canvas" width="600" height="800" aria-label="Game canvas"></canvas>
     </div>
 
-    <!-- Game Over Screen -->
     <div id="game-over-screen" class="screen">
         <h2>🎮 Game Over</h2>
         <h3>Your Score: <span id="final-score">0</span></h3>
@@ -485,15 +477,22 @@
         // =================================================================
         const CONFIG = Object.freeze({
             supabase: {
-                url: 'https://fpwgxrtmbcmkdithgdjf.supabase.co',
+                                url: 'https://fpwgxrtmbcmkdithgdjf.supabase.co',
                 anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwd2d4cnRtYmNta2RpdGhnZGpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjIyNzQ4MDEsImV4cCI6MjA3Nzg1MDgwMX0.lvD-1ZEpi1okfPsKEhfaILBYGPkMAZT8VJpHbIZtrNo',
-                tableName: 'leaderboard'
+                tableName: 'leaderboard',
+                sessionsTable: 'game_sessions'
             },
             game: {
-                gravity: 0.4,
-                flapStrength: -8,
-                pipeSpeed: 4,
-                pipeGap: 180,
+                gravity: 0.25,
+                maxGravity: 0.5,
+                gravityIncrease: 0.001,
+                flapStrength: -7,
+                pipeSpeed: 3,
+                maxPipeSpeed: 5,
+                pipeSpeedIncrease: 0.005,
+                pipeGap: 200,
+                minPipeGap: 160,
+                pipeGapDecrease: 0.05,
                 pipeWidth: 90,
                 pipeInterval: 110,
                 groundHeight: 70,
@@ -518,6 +517,12 @@
                     .trim()
                     .replace(/[^A-Za-z0-9\s]/g, '')
                     .substring(0, maxLength) || 'Anonymous';
+            },
+            
+            generateToken() {
+                const array = new Uint8Array(32);
+                crypto.getRandomValues(array);
+                return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
             },
             
             debounce(func, wait) {
@@ -606,21 +611,57 @@
                 return this.isEnabled;
             },
             
-                        async saveScore(name, score) {
-                if (!this.isEnabled || !this.client || score === 0) return false;
+            async createGameSession(playerName) {
+                if (!this.isEnabled || !this.client) return null;
                 
                 try {
-                    const { error } = await this.client
-                        .from(CONFIG.supabase.tableName)
-                        .insert([{ 
-                            name: Utils.sanitizeString(name), 
-                            score,
-                            created_at: new Date().toISOString()
-                        }]);
+                    const token = Utils.generateToken();
+                    
+                    const { data, error } = await this.client
+                        .from(CONFIG.supabase.sessionsTable)
+                        .insert([{
+                            token: token,
+                            player_name: Utils.sanitizeString(playerName),
+                            started_at: new Date().toISOString()
+                        }])
+                        .select()
+                        .single();
                     
                     if (error) throw error;
-                    console.log('✓ Score saved successfully');
-                    return true;
+                    
+                    console.log('✓ Game session created:', token.substring(0, 8) + '...');
+                    return token;
+                } catch (err) {
+                    console.error('Error creating game session:', err);
+                    return null;
+                }
+            },
+            
+            async saveScore(name, score, token, duration) {
+                if (!this.isEnabled || !this.client || score === 0 || !token) return false;
+                
+                try {
+                    // Use the RPC function to verify and save
+                    const { data, error } = await this.client
+                        .rpc('verify_and_save_score', {
+                            p_token: token,
+                            p_name: Utils.sanitizeString(name),
+                            p_score: score,
+                            p_duration: duration
+                        });
+                    
+                    if (error) {
+                        console.error('Error saving score:', error);
+                        return false;
+                    }
+                    
+                    if (data) {
+                        console.log('✓ Score verified and saved successfully');
+                        return true;
+                    } else {
+                        console.warn('⚠ Score rejected - invalid session');
+                        return false;
+                    }
                 } catch (err) {
                     console.error('Error saving score:', err);
                     return false;
@@ -633,7 +674,7 @@
                 try {
                     const { data, error } = await this.client
                         .from(CONFIG.supabase.tableName)
-                        .select('name, score, created_at')
+                        .select('name, score, verified, created_at')
                         .order('score', { ascending: false })
                         .limit(limit);
                     
@@ -674,7 +715,6 @@
                 
                 this.ctx = this.elements.canvas.getContext('2d', { alpha: false });
                 
-                // Load saved player name
                 const savedName = StorageManager.getPlayerName();
                 if (savedName) {
                     this.elements.nameInput.value = savedName;
@@ -759,13 +799,20 @@
                     const li = document.createElement('li');
                     li.setAttribute('data-rank', `#${index + 1}`);
                     
-                    // Add rank class for top 3
                     if (index === 0) li.classList.add('rank-1');
                     else if (index === 1) li.classList.add('rank-2');
                     else if (index === 2) li.classList.add('rank-3');
                     
                     const nameSpan = document.createElement('span');
                     nameSpan.textContent = entry.name;
+                    
+                    if (entry.verified) {
+                        const verifiedBadge = document.createElement('span');
+                        verifiedBadge.className = 'verified-badge';
+                        verifiedBadge.textContent = '✓';
+                        verifiedBadge.title = 'Verified score';
+                        nameSpan.appendChild(verifiedBadge);
+                    }
                     
                     const scoreSpan = document.createElement('span');
                     scoreSpan.textContent = entry.score;
@@ -774,7 +821,6 @@
                     li.appendChild(nameSpan);
                     li.appendChild(scoreSpan);
                     
-                    // Highlight current player's score
                     if (entry.name === currentPlayerName && entry.score === currentScore) {
                         li.classList.add('current-player');
                         const badge = document.createElement('span');
@@ -798,7 +844,6 @@
         // GAME OBJECTS
         // =================================================================
         
-        // Player Object
         const Player = {
             x: 100,
             y: 250,
@@ -833,10 +878,14 @@
             },
             
             update() {
-                this.velocityY += CONFIG.game.gravity;
+                const currentGravity = Math.min(
+                    CONFIG.game.gravity + (GameState.frame * CONFIG.game.gravityIncrease),
+                    CONFIG.game.maxGravity
+                );
+                
+                this.velocityY += currentGravity;
                 this.y += this.velocityY;
                 
-                // Update rotation based on velocity
                 this.rotation = Math.min(Math.max(this.velocityY * 3, -30), 90);
             },
             
@@ -854,11 +903,9 @@
                         this.height
                     );
                 } else {
-                    // Fallback bird drawing
                     ctx.fillStyle = '#FFD700';
                     ctx.fillRect(-this.width / 2, -this.height / 2, this.width, this.height);
                     
-                    // Eye
                     ctx.fillStyle = 'white';
                     ctx.beginPath();
                     ctx.arc(this.width / 4, -this.height / 6, 8, 0, Math.PI * 2);
@@ -869,7 +916,6 @@
                     ctx.arc(this.width / 4, -this.height / 6, 4, 0, Math.PI * 2);
                     ctx.fill();
                     
-                    // Beak
                     ctx.fillStyle = '#FF6347';
                     ctx.beginPath();
                     ctx.moveTo(this.width / 2, 0);
@@ -912,48 +958,52 @@
             }
         };
         
-        // Pipes Manager
         const PipesManager = {
             list: [],
             
             add() {
+                                const currentGap = Math.max(
+                    CONFIG.game.pipeGap - (GameState.score * CONFIG.game.pipeGapDecrease),
+                    CONFIG.game.minPipeGap
+                );
+                
                 const minHeight = 100;
-                const maxHeight = CONFIG.canvas.height - CONFIG.game.groundHeight - CONFIG.game.pipeGap - 100;
+                const maxHeight = CONFIG.canvas.height - CONFIG.game.groundHeight - currentGap - 100;
                 const topHeight = Math.random() * (maxHeight - minHeight) + minHeight;
                 
                 this.list.push({
                     x: CONFIG.canvas.width,
                     topHeight,
-                    bottomY: topHeight + CONFIG.game.pipeGap,
+                    bottomY: topHeight + currentGap,
                     counted: false
                 });
             },
             
             update() {
-                // Add new pipes
+                const currentSpeed = Math.min(
+                    CONFIG.game.pipeSpeed + (GameState.score * CONFIG.game.pipeSpeedIncrease),
+                    CONFIG.game.maxPipeSpeed
+                );
+                
                 if (GameState.frame % CONFIG.game.pipeInterval === 0) {
                     this.add();
                 }
                 
-                // Update existing pipes
                 for (let i = this.list.length - 1; i >= 0; i--) {
                     const pipe = this.list[i];
-                    pipe.x -= CONFIG.game.pipeSpeed;
+                    pipe.x -= currentSpeed;
                     
-                    // Score counting
                     if (!pipe.counted && pipe.x + CONFIG.game.pipeWidth < Player.x) {
                         GameState.score++;
                         DOMManager.updateScore(GameState.score);
                         pipe.counted = true;
                     }
                     
-                    // Collision detection
                     if (Player.checkCollision(pipe)) {
                         GameController.endGame();
                         return;
                     }
                     
-                    // Remove off-screen pipes
                     if (pipe.x + CONFIG.game.pipeWidth < 0) {
                         this.list.splice(i, 1);
                     }
@@ -962,14 +1012,11 @@
             
             draw(ctx) {
                 this.list.forEach(pipe => {
-                    // Top pipe
                     ctx.fillStyle = CONFIG.game.pipeGreen;
                     ctx.fillRect(pipe.x, 0, CONFIG.game.pipeWidth, pipe.topHeight);
                     
-                    // Top pipe cap
                     ctx.fillRect(pipe.x - 5, pipe.topHeight - 40, CONFIG.game.pipeWidth + 10, 40);
                     
-                    // Bottom pipe
                     ctx.fillRect(
                         pipe.x,
                         pipe.bottomY,
@@ -977,18 +1024,14 @@
                         CONFIG.canvas.height - pipe.bottomY
                     );
                     
-                    // Bottom pipe cap
                     ctx.fillRect(pipe.x - 5, pipe.bottomY, CONFIG.game.pipeWidth + 10, 40);
                     
-                    // Pipe borders
                     ctx.strokeStyle = CONFIG.game.pipeDark;
                     ctx.lineWidth = 3;
                     
-                    // Top pipe border
                     ctx.strokeRect(pipe.x, 0, CONFIG.game.pipeWidth, pipe.topHeight);
                     ctx.strokeRect(pipe.x - 5, pipe.topHeight - 40, CONFIG.game.pipeWidth + 10, 40);
                     
-                    // Bottom pipe border
                     ctx.strokeRect(
                         pipe.x,
                         pipe.bottomY,
@@ -997,7 +1040,6 @@
                     );
                     ctx.strokeRect(pipe.x - 5, pipe.bottomY, CONFIG.game.pipeWidth + 10, 40);
                     
-                    // Highlight effect
                     ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
                     ctx.fillRect(pipe.x + 5, 0, 12, pipe.topHeight);
                     ctx.fillRect(pipe.x + 5, pipe.bottomY, 12, CONFIG.canvas.height - pipe.bottomY);
@@ -1009,22 +1051,18 @@
             }
         };
         
-        // Background Renderer
         const Background = {
             cloudOffset: 0,
             
             draw(ctx) {
-                // Sky gradient
                 const gradient = ctx.createLinearGradient(0, 0, 0, CONFIG.canvas.height);
                 gradient.addColorStop(0, '#87CEEB');
                 gradient.addColorStop(1, '#70C5CE');
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
                 
-                // Animated clouds
                 this.drawClouds(ctx);
                 
-                // Ground
                 const groundY = CONFIG.canvas.height - CONFIG.game.groundHeight;
                 const groundGradient = ctx.createLinearGradient(0, groundY, 0, CONFIG.canvas.height);
                 groundGradient.addColorStop(0, '#DEB887');
@@ -1032,12 +1070,10 @@
                 ctx.fillStyle = groundGradient;
                 ctx.fillRect(0, groundY, CONFIG.canvas.width, CONFIG.game.groundHeight);
                 
-                // Ground details
                 ctx.strokeStyle = '#8B7355';
                 ctx.lineWidth = 3;
                 ctx.strokeRect(0, groundY, CONFIG.canvas.width, CONFIG.game.groundHeight);
                 
-                // Grass effect
                 ctx.fillStyle = '#228B22';
                 for (let i = 0; i < CONFIG.canvas.width; i += 15) {
                     ctx.fillRect(i, groundY - 4, 8, 4);
@@ -1080,11 +1116,15 @@
             frame: 0,
             playerName: 'Player',
             animationId: null,
+            gameToken: null,
+            startTime: null,
             
             reset() {
                 this.score = 0;
                 this.frame = 0;
                 this.active = false;
+                this.gameToken = null;
+                this.startTime = null;
             }
         };
         
@@ -1098,25 +1138,20 @@
                 SupabaseManager.init();
                 this.setupEventListeners();
                 
-                                console.log('🎮 Flappy Abby initialized');
+                console.log('🎮 Flappy Abby initialized');
             },
             
             setupEventListeners() {
-                // Start button
                 DOMManager.elements.startButton.addEventListener('click', () => this.startGame());
                 
-                // Enter key to start
                 DOMManager.elements.nameInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') this.startGame();
                 });
                 
-                // Restart button
                 DOMManager.elements.restartButton.addEventListener('click', () => this.startGame());
                 
-                // Home button
                 DOMManager.elements.homeButton.addEventListener('click', () => this.returnToMenu());
                 
-                // Keyboard controls
                 window.addEventListener('keydown', (e) => {
                     if (e.code === 'Space' || e.key === ' ') {
                         e.preventDefault();
@@ -1124,40 +1159,42 @@
                     }
                 });
                 
-                // Mouse controls
                 DOMManager.elements.canvas.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     Player.flap();
                 });
                 
-                // Touch controls
                 DOMManager.elements.canvas.addEventListener('touchstart', (e) => {
                     e.preventDefault();
                     Player.flap();
                 }, { passive: false });
                 
-                // Prevent context menu
                 DOMManager.elements.canvas.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                 });
             },
             
-            startGame() {
-                // Validate and save player name
+            async startGame() {
                 const rawName = DOMManager.elements.nameInput.value.trim();
                 GameState.playerName = Utils.sanitizeString(rawName);
                 StorageManager.setPlayerName(GameState.playerName);
                 
-                // Reset game
                 GameState.reset();
                 Player.reset();
                 PipesManager.reset();
                 
-                // Update UI
+                if (SupabaseManager.isEnabled) {
+                    GameState.gameToken = await SupabaseManager.createGameSession(GameState.playerName);
+                    if (!GameState.gameToken) {
+                        console.warn('⚠ Failed to create game session, scores will not be saved');
+                    }
+                }
+                
+                GameState.startTime = Date.now();
+                
                 DOMManager.updateScore(0);
                 DOMManager.showScreen('game');
                 
-                // Start game loop
                 GameState.active = true;
                 this.gameLoop();
             },
@@ -1167,24 +1204,19 @@
                 
                 const ctx = DOMManager.ctx;
                 
-                // Draw background
                 Background.draw(ctx);
                 
-                // Update game objects
                 Player.update();
                 PipesManager.update();
                 
-                // Check boundary collisions
                 if (Player.checkBoundaryCollision()) {
                     this.endGame();
                     return;
                 }
                 
-                // Draw game objects
                 PipesManager.draw(ctx);
                 Player.draw(ctx);
                 
-                // Continue loop
                 GameState.frame++;
                 GameState.animationId = requestAnimationFrame(() => this.gameLoop());
             },
@@ -1196,11 +1228,9 @@
                     cancelAnimationFrame(GameState.animationId);
                 }
                 
-                // Show game over screen
                 DOMManager.showScreen('gameOver');
                 DOMManager.showFinalScore(GameState.score);
                 
-                // Handle leaderboard
                 this.handleLeaderboard();
             },
             
@@ -1213,12 +1243,25 @@
                 
                 DOMManager.showLoadingLeaderboard();
                 
-                // Save score if greater than 0
-                if (GameState.score > 0) {
-                    await SupabaseManager.saveScore(GameState.playerName, GameState.score);
+                if (GameState.score > 0 && GameState.gameToken && GameState.startTime) {
+                    const gameDuration = Date.now() - GameState.startTime;
+                    
+                    const saved = await SupabaseManager.saveScore(
+                        GameState.playerName,
+                        GameState.score,
+                        GameState.gameToken,
+                        gameDuration
+                    );
+                    
+                    if (saved) {
+                        console.log('✓ Score successfully verified and saved');
+                    } else {
+                        console.warn('⚠ Score could not be verified');
+                        DOMManager.elements.scoreMessage.innerHTML += 
+                            '<div class="error">⚠ Score not verified - may not appear on leaderboard</div>';
+                    }
                 }
                 
-                // Fetch and display leaderboard
                 const data = await SupabaseManager.fetchLeaderboard();
                 
                 if (data) {
